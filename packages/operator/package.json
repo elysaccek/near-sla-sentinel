@@ -1,0 +1,19 @@
+{
+  "name": "@sla-sentinel/oracle",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "oracle": "node src/commands/oracle-cli.ts",
+    "test": "node --test test/*.test.ts",
+    "verify:payment": "node src/commands/verify-settlement.ts",
+    "demo:testnet": "node src/commands/testnet-payment.ts",
+    "demo:sandbox": "node src/commands/sandbox-payment.ts",
+    "demo:health": "node src/demo/demo-health.ts"
+  },
+  "dependencies": {
+    "near-api-js": "7.5.1"
+  }
+}

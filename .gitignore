@@ -1,0 +1,8 @@
+target/
+node_modules/
+.DS_Store
+/packages/operator/testnet-payment-proof.json
+.env
+.env.*
+*.key
+*.pem
