@@ -2,6 +2,16 @@
 
 SLA Sentinel lets API providers pre-fund outage compensation on NEAR. The provider deposits a fixed amount for an observation window, and the customer accepts the terms before monitoring starts. The same two authorized oracle accounts must corroborate a consecutive run of failed samples before the customer can claim. A working deployment is available on NEAR Testnet.
 
+## Explore the demo evidence
+
+Open `docs/index.html` from a local checkout in your browser.
+Compare oracle pairs in the Testnet payout and Sandbox refund, then open the
+payment receipt details or the full evidence JSON. The viewer uses the archived
+observations and needs no wallet or dependencies to open.
+
+If the archived proofs change, regenerate the viewer data with Node 22.22.2 or
+later by running `node docs/evidence-viewer/generate.mjs` from the repository root.
+
 ![SLA Sentinel concept illustration showing API monitoring and pre-funded compensation on NEAR](docs/assets/sla-sentinel-cover.jpg)
 
 ## How it works

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore the archived oracle observations and payment receipts behind SLA Sentinel.">
+  <title>SLA Sentinel — Evidence Explorer</title>
+  <link rel="stylesheet" href="evidence-viewer/style.css">
+  <script src="evidence-viewer/data.js" defer></script>
+  <script src="evidence-viewer/viewer.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="top"><a class="brand" href="https://github.com/elysaccek/near-sla-sentinel"><span class="mark" aria-hidden="true">↳</span>SLA Sentinel</a><a href="https://github.com/elysaccek/near-sla-sentinel">GitHub ↗</a></header>
+    <section class="intro">
+      <h1>Evidence Explorer</h1>
+      <p>See how the same two oracles must agree across consecutive checks before a customer can claim compensation.</p>
+    </section>
+    <div class="scenarios" role="group" aria-label="Evidence scenario">
+      <button type="button" data-case="0" aria-pressed="true">Testnet payout</button>
+      <button type="button" data-case="1" aria-pressed="false">Sandbox refund</button>
+    </div>
+    <div class="dashboard">
+      <section class="panel observations" aria-labelledby="observations">
+        <header><h2 id="observations">Oracle observations</h2><p id="source"></p></header>
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Observation matrix">
+          <table id="matrix"></table>
+        </div>
+        <p class="legend">200 · Up <span>503 · Down</span> ? · Unknown</p>
+        <div class="pair-area">
+          <h3>Compare an oracle pair</h3>
+          <div id="pairs" class="pairs" role="group" aria-label="Oracle pair"></div>
+          <p id="pair-summary" role="status"></p>
+        </div>
+      </section>
+      <section class="panel settlement" aria-labelledby="settlement">
+        <header><h2 id="settlement">Settlement</h2><strong id="verdict" class="status"></strong></header>
+        <p id="amount" class="amount"></p>
+        <p id="outcome" class="outcome"></p>
+        <dl class="metrics">
+          <div><dt>Confirmed streak</dt><dd id="confirmed"></dd></div>
+          <div><dt>Possible streak</dt><dd id="possible"></dd></div>
+          <div><dt>Required streak</dt><dd id="threshold"></dd></div>
+        </dl>
+        <details>
+          <summary>Payment receipts and recipient</summary>
+          <dl class="receipts">
+            <dt>Recipient</dt><dd id="recipient"></dd>
+            <dt>Transaction</dt><dd id="transaction"></dd>
+            <dt>Transfer receipt</dt><dd id="transfer"></dd>
+            <dt>Callback receipt</dt><dd id="callback"></dd>
+          </dl>
+        </details>
+        <div class="links"><a id="explorer">Open Testnet transaction ↗</a><a id="archive">Open full evidence JSON ↗</a></div>
+      </section>
+    </div>
+    <footer>This viewer recomputes streaks from archived observations. Use the receipt links and repository commands to independently verify settlement.</footer>
+  </main>
+</body>
+</html>
