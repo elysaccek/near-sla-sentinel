@@ -9,10 +9,12 @@ import { defaultTestnetRpc, nearRpc, scopedVotePermission } from "../../shared/n
 import { checkPilotWasm } from "../src/demo/settlement-pilot.ts";
 import { fileError, readWorkerFile, writePrivateFile } from "../src/worker/identity.ts";
 import { lockWorker } from "../src/worker/store.ts";
+import { reviewedWasm } from "./bootstrap.mjs";
 
-const { values: { submit, "provider-reserve": reserve, "sponsor-key-file": keyPath } } = parseArgs({ options: {
+const { values: { submit, "provider-reserve": reserve, "sponsor-key-file": keyPath, wasm: wasmPath } } = parseArgs({ options: {
   submit: { type: "boolean" }, "provider-reserve": { type: "string", default: "1000" },
   "sponsor-key-file": { type: "string", default: "/bootstrap/sponsor" },
+  wasm: { type: "string" },
 } });
 if (!/^[0-9]{1,4}(?:\.[0-9]{1,4})?$/.test(reserve)) throw new Error("Use a reserve between 1 and 1000 Testnet NEAR");
 const providerFunding = nearToYocto(reserve);
@@ -71,8 +73,8 @@ async function provision() {
     accountId: sponsor, publicKey: await bootstrap.getPublicKey(), finalityQuery: finality,
   });
   assert.equal(permission, "FullAccess", "Use the dedicated sponsor's provisioning key");
-  const artifact = checkPilotWasm(await readFile("/app/sla_escrow_v2.wasm"));
-  assert.equal(artifact.codeHash, testnetDemo.codeHash, "Build the pinned, reviewed escrow artifact");
+  const artifact = wasmPath === undefined ? await reviewedWasm(url) : checkPilotWasm(await readFile(wasmPath));
+  assert.equal(artifact.codeHash, testnetDemo.codeHash, "Use the pinned, reviewed escrow artifact");
   async function actorKey(file, id) {
     try { return KeyPair.fromString((await readWorkerFile(file, 256)).toString("utf8").trim()); }
     catch (error) {

@@ -8,21 +8,35 @@ console and its APIs. Port 8790 is configurable and avoids the reported
 SSH, Nginx, cloudflared, and application listeners.
 [Cloudflare local tunnel configuration](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/)
 
-## Prepare the origin
+## Install from GitHub
 
-Use Docker Engine and Compose v2. Place the released checkout in
-`/opt/sla-sentinel` and check that TCP 8790 is free:
+On a fresh Ubuntu host with Git, run as root:
 
 ```sh
-docker compose version
-ss -ltn '( sport = :8790 )'
-cd /opt/sla-sentinel
-docker compose -f deployment/testnet/compose.yml up --build -d --wait web
-curl -fsS http://127.0.0.1:8790/healthz
+git clone https://github.com/elysaccek/near-sla-sentinel.git /opt/sla-sentinel && sh /opt/sla-sentinel/deployment/testnet/install-ubuntu.sh
 ```
 
-The web service can start before chain credentials arrive. It shows
-archived public pilot transactions while the live runner is offline.
+For an existing checkout, run `sh /opt/sla-sentinel/deployment/testnet/install-ubuntu.sh`
+as root after updating it to the intended release. The installer builds
+from that checkout. It installs Docker Engine and Compose from Docker's
+Ubuntu repository when Docker is absent, then builds the service images,
+provisions a dedicated Testnet deployment, enables startup on boot, and
+checks the local feed for the runner and all three oracles. The default
+fresh provider reserve is 1 Testnet NEAR. Each new agreement escrows
+0.01 Testnet NEAR in compensation plus storage funding.
+
+The installer uses NEAR's Testnet faucet and waits for the sponsor
+account and key to be visible in finalized state. If the faucet or RPC
+is temporarily unavailable, rerun the same command after it recovers.
+The bootstrap ID and key stay under `/var/lib/sla-sentinel/bootstrap`.
+The installer resumes with the same sponsor after a partial setup and
+uses the saved deployment record after provisioning completes. The Wasm
+used for fresh provisioning is fetched from the reviewed Testnet release
+and checked against pinned hashes before deployment.
+
+Set `SLA_PRODUCT_PORT` in `/etc/sla-sentinel/testnet.conf` before running
+the installer if TCP 8790 is already in use. Use the same port in the
+tunnel origin.
 [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
 
 ## Set up the existing tunnel
@@ -56,10 +70,10 @@ systemctl is-enabled cloudflared.service
 
 [Cloudflare DNS and local tunnel setup](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/)
 
-## Put settlement on the server
+## Move an existing deployment
 
-To continue the existing deployment and its history, transfer its private
-Docker state before starting the server's runner. Build the server images
+To move an existing deployment and its history, restore its private
+Docker state before running the installer. Build the server images
 first. At cutover, verify the source runner has no active agreement and
 quiesce it, the workers and the Master. Take a consistent backup. Use a
 logical PostgreSQL dump for the Master across host architectures. The
@@ -69,27 +83,17 @@ and published history. Transfer them privately over SSH with file
 ownership and modes preserved. Keep the source stopped after cutover
 so that one runner uses the funded provider account.
 
-For a fresh deployment with a new escrow, use the
-[Testnet provisioning instructions](live-testnet.md#start-the-recurring-demo).
-Provisioning with the same account IDs against empty volumes cannot
-recover the previous private keys or history.
-
-Once the server has the restored state or a freshly provisioned escrow,
-install the boot service as root:
+After installing, inspect service state with:
 
 ```sh
 cd /opt/sla-sentinel
-sh deployment/testnet/install-ubuntu.sh
 systemctl is-enabled docker.service sla-sentinel-testnet.service
 systemctl status sla-sentinel-testnet.service --no-pager
 docker compose -f deployment/testnet/compose.yml ps
 ```
 
-The installer enables Docker and a boot unit that reconciles Compose in
-dependency order. Runtime restart policies allow containers to recover
-between boots. The unit uses existing images at boot. Its optional
-`/etc/sla-sentinel/testnet.conf` file can set the origin port and RPC URLs.
-The installer builds from the checked-out source before activating the unit.
+The boot unit reconciles Compose in dependency order using the installed
+images. Runtime restart policies allow containers to recover between boots.
 [Docker restart policies](https://docs.docker.com/engine/containers/start-containers-automatically/)
 
 ## Check the public release

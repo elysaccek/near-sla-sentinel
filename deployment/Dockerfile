@@ -77,7 +77,6 @@ COPY deployment/local/*.mjs deployment/local/*.sh ./local/
 ENTRYPOINT []
 
 FROM oracle AS testnet-demo
-COPY --from=escrow-wasm /build/contracts/sla-escrow-v2/target/wasm32-unknown-unknown/release/sla_escrow_v2.wasm /app/sla_escrow_v2.wasm
 COPY deployment/testnet/*.mjs deployment/testnet/*.sh ./live/
 COPY deployment/local/files.mjs ./live/files.mjs
 ENTRYPOINT []

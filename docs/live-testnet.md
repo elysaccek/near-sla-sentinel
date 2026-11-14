@@ -34,6 +34,10 @@ that project's `live-public` volume name.
 
 ## Start the recurring demo
 
+For a fresh Ubuntu deployment, use the
+[one-command installer](single-server-testnet.md#install-from-github).
+Use the manual steps below when supplying your own Testnet sponsor.
+
 Create a new, dedicated Testnet sponsor. Save its ED25519 key locally in a
 file owned by the container's UID 1000 with mode `0600`. Point
 `SLA_DEMO_SPONSOR` to the sponsor account and `SLA_DEMO_SPONSOR_KEY` to the
@@ -61,6 +65,10 @@ The default reserve is 1,000 Testnet NEAR in the **provider account**, with
 Use `--provider-reserve 5` with the same command for a smaller trial. The
 option funds a new provider account. To top up an existing provider,
 transfer Testnet NEAR directly to the account shown by the read-only command.
+Provisioning retrieves the reviewed Testnet Wasm and verifies its pinned
+hashes before deploying it. For an offline artifact source use
+`--wasm /container/path/to/artifact.wasm` with a read-only mount of the same
+artifact. Chain access is still required to provision.
 New demo agreements lock 0.01 NEAR plus the on-chain storage quote. A
 confirmed breach pays the agreed 0.01 to the customer. Healthy or
 inconclusive rounds return the principal to the provider. Earlier

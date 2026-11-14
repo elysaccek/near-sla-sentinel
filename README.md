@@ -57,8 +57,8 @@ website and an optional one-host runner for scheduled 2-hour, 3-hour and
 5-hour HTTP scenarios. Agreements settle on NEAR Testnet and the history
 links each verified transfer to its transaction.
 
-For one Ubuntu host with no public origin port, see the
-[Cloudflare Tunnel deployment guide](docs/single-server-testnet.md).
+For a one-command Ubuntu install from the repository and an optional
+Cloudflare Tunnel, see the [single-server Testnet guide](docs/single-server-testnet.md).
 
 ## Original Testnet demonstration
 
