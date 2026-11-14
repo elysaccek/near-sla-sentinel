@@ -1,0 +1,272 @@
+name: sla-sentinel-testnet
+
+x-app: &app
+  image: sla-sentinel-testnet:local
+  build:
+    context: ../..
+    dockerfile: deployment/Dockerfile
+    target: testnet-demo
+  read_only: true
+  init: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-worker: &worker
+  <<: *app
+  command: [node, live/worker.mjs]
+  restart: unless-stopped
+  network_mode: service:target
+  depends_on:
+    enroll:
+      condition: service_completed_successfully
+    master:
+      condition: service_healthy
+    target:
+      condition: service_healthy
+
+services:
+  init:
+    <<: *app
+    user: root
+    network_mode: none
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    command: [/bin/sh, live/init.sh]
+    volumes:
+      - registry:/registry
+      - master-auth:/master-auth
+      - admin-access:/admin-access
+      - observers:/observers
+      - postgres-auth:/postgres-auth
+      - runner-state:/runner-state
+      - runner-keys:/runner-keys
+      - contract-admin:/contract-admin
+      - live-public:/live-public
+      - oracle-a:/states/oracle-a
+      - evidence-a:/evidence/oracle-a
+      - oracle-b:/states/oracle-b
+      - evidence-b:/evidence/oracle-b
+      - oracle-c:/states/oracle-c
+      - evidence-c:/evidence/oracle-c
+
+  provision:
+    <<: *app
+    profiles: [setup]
+    command: [node, live/provision.mjs]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      SLA_DEMO_SPONSOR: ${SLA_DEMO_SPONSOR:-}
+      SLA_DEMO_RPC: ${SLA_DEMO_RPC:-https://test.rpc.fastnear.com}
+    volumes:
+      - registry:/registry
+      - runner-keys:/runner-keys
+      - contract-admin:/contract-admin
+      - oracle-a:/states/oracle-a
+      - oracle-b:/states/oracle-b
+      - oracle-c:/states/oracle-c
+
+  database:
+    image: postgres:18.7@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_PASSWORD_FILE: /postgres-auth/password
+    volumes:
+      - database:/var/lib/postgresql
+      - postgres-auth:/postgres-auth:ro
+    networks: [database]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, sentinel]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  database-init:
+    image: sla-sentinel-testnet-master:local
+    build: &master-build
+      context: ../..
+      dockerfile: deployment/Dockerfile
+      target: master
+    user: "1000:999"
+    read_only: true
+    cap_drop: [ALL]
+    command: [node, provision-db.mjs]
+    environment:
+      SLA_POSTGRES_PASSWORD_FILE: /postgres-auth/password
+      SLA_MASTER_DATABASE_PASSWORD_FILE: /master-auth/database-password
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - postgres-auth:/postgres-auth:ro
+      - master-auth:/master-auth:ro
+    networks: [database]
+
+  target:
+    <<: *app
+    restart: unless-stopped
+    command: [node, live/target.mjs]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - observers:/observers:ro
+      - live-public:/live-public:ro
+    networks: [database, outgoing]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8787/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  master:
+    image: sla-sentinel-testnet-master:local
+    build: *master-build
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    network_mode: service:target
+    environment:
+      SLA_MASTER_HOST: 127.0.0.1
+      SLA_MASTER_AUDIENCE: sla-sentinel/testnet-demo
+      SLA_MASTER_DATABASE_URL: postgresql://sentinel@database:5432/sentinel?options=--search_path%3Dsentinel
+      SLA_MASTER_DATABASE_PASSWORD_FILE: /master-auth/database-password
+      SLA_MASTER_ADMIN_FILE: /master-auth/admins.json
+      SLA_MASTER_ASSIGNMENT_KEY_FILE: /master-auth/assignment-private.der
+      SLA_MASTER_TESTNET_RPC_URL: ${SLA_DEMO_RPC:-https://test.rpc.fastnear.com}
+    depends_on:
+      target:
+        condition: service_healthy
+      database-init:
+        condition: service_completed_successfully
+    volumes:
+      - master-auth:/master-auth:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  enroll:
+    <<: *app
+    command: [node, live/enroll.mjs]
+    network_mode: service:target
+    depends_on:
+      master:
+        condition: service_healthy
+    volumes:
+      - registry:/registry:ro
+      - admin-access:/admin-access:ro
+      - oracle-a:/states/oracle-a
+      - oracle-b:/states/oracle-b
+      - oracle-c:/states/oracle-c
+
+  oracle-a:
+    <<: *worker
+    environment:
+      SLA_DEMO_ROLE: oracle-a
+      SLA_DEMO_RPC: ${SLA_DEMO_RPC:-https://test.rpc.fastnear.com}
+    volumes:
+      - oracle-a:/state
+      - evidence-a:/evidence
+      - registry:/registry:ro
+
+  oracle-b:
+    <<: *worker
+    environment:
+      SLA_DEMO_ROLE: oracle-b
+      SLA_DEMO_RPC: ${SLA_DEMO_RPC:-https://test.rpc.fastnear.com}
+    volumes:
+      - oracle-b:/state
+      - evidence-b:/evidence
+      - registry:/registry:ro
+
+  oracle-c:
+    <<: *worker
+    environment:
+      SLA_DEMO_ROLE: oracle-c
+      SLA_DEMO_RPC: ${SLA_DEMO_RPC:-https://test.rpc.fastnear.com}
+    volumes:
+      - oracle-c:/state
+      - evidence-c:/evidence
+      - registry:/registry:ro
+
+  runner:
+    <<: *app
+    restart: unless-stopped
+    command: [node, live/runner.mjs]
+    network_mode: service:target
+    depends_on:
+      master:
+        condition: service_healthy
+      oracle-a:
+        condition: service_started
+      oracle-b:
+        condition: service_started
+      oracle-c:
+        condition: service_started
+    environment:
+      SLA_DEMO_RPC: ${SLA_DEMO_RPC:-https://test.rpc.fastnear.com}
+      SLA_DEMO_RECEIPT_RPC: ${SLA_DEMO_RECEIPT_RPC:-https://archival-rpc.testnet.near.org}
+      SLA_DEMO_COMMISSION: ${SLA_DEMO_COMMISSION:-0}
+    volumes:
+      - registry:/registry:ro
+      - runner-keys:/runner-keys:ro
+      - admin-access:/admin-access:ro
+      - runner-state:/runner-state
+      - live-public:/live-public
+      - evidence-a:/evidence/oracle-a:ro
+      - evidence-b:/evidence/oracle-b:ro
+      - evidence-c:/evidence/oracle-c:ro
+
+  web:
+    image: sla-sentinel-testnet-web:local
+    build:
+      context: ../..
+      dockerfile: deployment/Dockerfile
+      target: product
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${SLA_PRODUCT_PORT:-8790}:8790"
+    volumes:
+      - live-public:/live-public:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8790/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  database:
+    internal: true
+  outgoing:
+
+volumes:
+  registry:
+  master-auth:
+  admin-access:
+  observers:
+  postgres-auth:
+  database:
+  contract-admin:
+  runner-keys:
+  runner-state:
+  live-public:
+  oracle-a:
+  oracle-b:
+  oracle-c:
+  evidence-a:
+  evidence-b:
+  evidence-c:

@@ -1,0 +1,45 @@
+services:
+  oracle:
+    image: sla-sentinel-oracle:local
+    build:
+      context: ../..
+      dockerfile: deployment/Dockerfile
+      target: oracle
+    user: "${SLA_UID:-1000}:${SLA_GID:-1000}"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 15s
+    healthcheck:
+      test: [CMD-SHELL, "test -s /state/identity.json && test -s /state/worker.sqlite"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    environment:
+      SLA_WORKER_VOTE_KEY_FILE: /run/sla-sentinel/vote-key
+      SLA_WORKER_TESTNET_RPC_URL: ${SLA_WORKER_TESTNET_RPC_URL:-https://test.rpc.fastnear.com}
+      SLA_ORACLE_CONTRACT: ${SLA_ORACLE_CONTRACT:?Set the V2 escrow account}
+      SLA_ORACLE_CODE_HASH: ${SLA_ORACLE_CODE_HASH:?Set the V2 escrow code hash}
+      SLA_ORACLE_ENDPOINT: ${SLA_ORACLE_ENDPOINT:?Set the approved target URL}
+      SLA_ORACLE_CONTROL_1: ${SLA_ORACLE_CONTROL_1:-}
+      SLA_ORACLE_CONTROL_2: ${SLA_ORACLE_CONTROL_2:-}
+    volumes:
+      - type: bind
+        source: ${SLA_ORACLE_STATE:?Set the absolute Oracle state directory}
+        target: /state
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SLA_ORACLE_CREDENTIALS:?Set the absolute Oracle credentials directory}/vote-key
+        target: /run/sla-sentinel/vote-key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SLA_ORACLE_CREDENTIALS:?Set the absolute Oracle credentials directory}/assignment-public.der
+        target: /run/sla-sentinel/assignment-public.der
+        read_only: true
+        bind:
+          create_host_path: false

@@ -1,0 +1,15 @@
+# name slots min_down_slots quorum votes outcome confirmed possible
+# Votes are ordered by oracle. Each entry is up_mask:down_mask in decimal, or - for an unsubmitted vote.
+v1_testnet	8	5	2	131:124,131:124,131:124	breach	5	5
+v1_sandbox	4	4	2	0:3,0:15,0:12	inconclusive	2	4
+v1_healthy	5	3	2	4:0,4:0,-	healthy	0	2
+four_majority	4	4	3	0:15,0:15,0:15,-	breach	4	4
+five_rotating	4	4	3	0:3,0:3,0:15,0:12,0:12	inconclusive	2	4
+five_confirmed	5	5	3	0:31,0:31,0:31,31:0,-	breach	5	5
+five_no_slotwise_majority	4	2	3	15:0,15:0,15:0,-,-	healthy	0	0
+seven_high_quorum	8	8	5	0:255,0:255,0:255,0:255,0:255,-,-	breach	8	8
+seven_high_quorum_missing	8	8	5	0:255,0:255,0:255,0:255,-,-,-	inconclusive	0	8
+ten_unanimous	5	5	10	0:31,0:31,0:31,0:31,0:31,0:31,0:31,0:31,0:31,0:31	breach	5	5
+ten_majority_unsubmitted	5	5	6	0:31,0:31,0:31,0:31,0:31,-,-,-,-,-	inconclusive	0	5
+all_64_slots	64	64	2	0:18446744073709551615,0:18446744073709551615,-	breach	64	64
+last_two_slots	64	2	2	0:13835058055282163712,0:13835058055282163712,-	breach	2	64

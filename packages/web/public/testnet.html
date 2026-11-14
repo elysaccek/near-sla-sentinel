@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SLA Sentinel turns API uptime commitments into pre-funded agreements with verifiable settlement on NEAR.">
+  <title>Testnet activity — SLA Sentinel</title>
+  <link rel="stylesheet" href="/product.css">
+  <script type="module" src="/testnet.js"></script>
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner"><a class="brand" href="/" aria-label="SLA Sentinel home"><i class="brand-mark" aria-hidden="true"></i>SLA<span>Sentinel</span></a><nav aria-label="Main navigation"><a href="/how-it-works">How it works</a><a href="/testnet" aria-current="page"><i class="nav-dot" aria-hidden="true"></i>Testnet</a></nav></div></header>
+<main class="wrap page">
+  <div class="page-heading live-head"><div><p class="kicker"><i></i> NEAR Testnet</p><h1>Live <em>Testnet.</em></h1><p class="intro">Scheduled HTTP scenarios with three oracle workers. Every recorded settlement links to the actual Testnet transaction.</p></div><div class="feed-status"><span id="feed-status" class="state">Connecting…</span><time id="feed-updated"></time></div></div>
+  <section class="live-metrics" aria-label="Demo funding and run">
+    <div><span>Demo provider reserve</span><strong id="live-reserve">—</strong><small id="live-funding">1,000 Testnet NEAR starting target</small></div>
+    <div><span>New agreements</span><strong><span id="live-payout">—</span> <small>Testnet NEAR</small></strong><small>Compensation or principal refund</small></div>
+    <div><span>Outage policy</span><strong>2 of 3</strong><small>Same pair across 3 consecutive slots</small></div>
+    <div><span>Current run</span><strong class="run-phase" id="live-phase">—</strong><small id="live-window">Waiting for runner status</small><a id="live-contract" hidden>View escrow ↗</a></div>
+  </section>
+  <section class="schedule" aria-labelledby="schedule-title">
+    <h2 id="schedule-title">Simulated outage schedule</h2>
+    <p class="quiet" id="sample-plan"></p>
+    <div class="schedule-grid" id="live-schedule">
+      <article><span class="node-label">Oracle A</span><span class="state observer-status" data-health="oracle-a" hidden></span><h3>Every 2 hours</h3><p>The fixture returns HTTP 503 to A for three minutes.</p><span data-next="oracle-a">—</span></article>
+      <article><span class="node-label">Oracle B</span><span class="state observer-status" data-health="oracle-b" hidden></span><h3>Every 3 hours</h3><p>The fixture returns HTTP 503 to B for three minutes.</p><span data-next="oracle-b">—</span></article>
+      <article><span class="node-label">Oracle C</span><span class="state observer-status" data-health="oracle-c" hidden></span><h3>No individual outage</h3><p>C samples every agreement and sees HTTP 503 during shared target outages.</p></article>
+      <article><span class="node-label">Target API</span><h3>Every 5 hours</h3><p>The fixture returns HTTP 503 to all three for three minutes.</p><span data-next="target">—</span></article>
+    </div>
+    <p class="quiet"><strong>A + B overlap every 6 hours.</strong> The same pair can confirm a breach while C sees HTTP 200. <span data-next="oracle-pair">—</span></p>
+    <p class="quiet">One host runs the demo.</p>
+  </section>
+  <section class="history-panel" id="history" aria-labelledby="history-title">
+    <div class="history-head"><div><h2 id="history-title">Settlement history</h2><p id="history-summary">Checking for verified activity…</p></div><button class="btn secondary compact" type="button" id="refresh-live">Refresh</button></div>
+    <table class="history-table" role="table" aria-labelledby="history-title"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Window / source</th><th scope="col" role="columnheader">Scenario</th><th scope="col" role="columnheader">Outcome</th><th scope="col" role="columnheader">Amount</th><th scope="col" role="columnheader">Transaction</th></tr></thead><tbody role="rowgroup" id="live-history"></tbody></table>
+    <p id="history-empty" class="quiet" hidden></p>
+    <div class="history-more"><button class="btn secondary compact" type="button" id="history-more" hidden>Load more</button></div>
+  </section>
+</main>
+<footer class="site-footer wrap"><a class="brand" href="/"><i class="brand-mark" aria-hidden="true"></i>SLA Sentinel</a><a href="https://github.com/elysaccek/near-sla-sentinel">Source on GitHub <span aria-hidden="true">↗</span></a></footer>
+</body>
+</html>

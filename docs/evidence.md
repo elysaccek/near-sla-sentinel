@@ -22,18 +22,47 @@ submission and evidence retention.
 - `assessWindow(slotCount, minDownSlots, votes)` recomputes the decision and both
   outage-streak bounds. Pass three on-chain vote slots in oracle order, with
   `null` for an unsubmitted vote. Compare with the finalized contract view.
+- `assessQuorumWindow(slotCount, minDownSlots, downQuorum, votes)` evaluates an
+  N/K policy. Supply one vote slot per authenticated member of the frozen roster.
+  The same quorum must report Down throughout the confirmed run. A possible run
+  requires the same quorum to have no Up vote anywhere in the run. An unsubmitted
+  vote is Unknown in every slot. The evaluator requires at least three oracle
+  slots and a strict majority quorum or higher.
 - The local demo exception uses `{ localDemo: true }` and the exact
   `http://127.0.0.1:8787/health` URL.
 
-The evidence document uses domain `sla-sentinel/evidence/v1`. SHA-256 hashes its
-UTF-8 JSON with keys sorted at every depth and no whitespace. Slot observations
-are in ascending slot order. The `up_mask` and `down_mask` use unsigned decimal
-strings and bit zero for slot zero. Unknown contributes to neither mask.
+The standalone collector and archived demonstrations use the
+`sla-sentinel/evidence/v1` domain. Workers also produce
+`sla-sentinel/evidence/v2`, which records `observed_http_status`,
+`control_state` and `diagnostic` per slot. `http_status` is the value passed
+to vote normalization. For example, a worker can record a 503 in
+`observed_http_status` and leave `http_status` null when local control
+reachability is unavailable. The slot remains Unknown and the timestamps
+show when the request actually ran. Null control information means the
+worker did not record a control state for that slot.
 
-Run the deterministic checks with Node 22.18+.
+Both domains hash the evidence document with SHA-256 over UTF-8 JSON, with
+keys sorted at every depth and no whitespace. Slot observations are in
+ascending slot order. The `up_mask` and `down_mask` use unsigned decimal
+strings and bit zero for slot zero. Unknown contributes to neither mask.
+The V2 digest commits to the diagnostic fields as well as the observations.
+The hash check establishes what the oracle attested. An external observer
+still depends on the oracle to report its own network observations accurately.
+
+Run the deterministic checks with Node 22.22.2 or later.
 
 ```sh
 cd packages/operator
 npm ci
 npm test
 ```
+
+The V2 escrow imports the standalone Rust N/K evaluator. Both
+implementations run the shared cases in `fixtures/quorum-windows.tsv`. From
+the repository root, run the Rust tests with:
+
+```sh
+cargo test --locked --manifest-path contracts/sla-quorum/Cargo.toml
+```
+
+See [Escrow V2](escrow-v2.md) for the on-chain policy and Sandbox checks.

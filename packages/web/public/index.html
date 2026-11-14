@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Oracle network · SLA Sentinel</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="rail">
+      <a class="brand" href="/" aria-label="SLA Sentinel home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>SLA Sentinel</a>
+      <nav aria-label="Console sections">
+        <button class="nav-item" type="button" data-view="network" aria-current="page"><span aria-hidden="true">◈</span> Oracle network</button>
+        <button class="nav-item" type="button" data-view="agreements"><span aria-hidden="true">▤</span> Agreements</button>
+        <button class="nav-item" type="button" data-view="invitations"><span aria-hidden="true">＋</span> Invitations</button>
+      </nav>
+      <div class="rail-status">
+        <div><span class="dot"></span> Local Sandbox</div>
+        <code id="contract-label">Checking escrow</code>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <span>Operations console</span>
+        <button id="lock" class="quiet" type="button" hidden>Lock console</button>
+      </header>
+
+      <div class="content">
+        <section id="access" class="panel access" aria-labelledby="access-title" hidden>
+          <div><h2 id="access-title">Unlock management</h2><p>Enter the operator token from your local setup.</p></div>
+          <form id="access-form">
+            <label class="visually-hidden" for="token">Operator token</label>
+            <input id="token" type="password" required autocomplete="off" spellcheck="false" placeholder="Operator token">
+            <button class="primary" type="submit">Unlock</button>
+          </form>
+          <p id="access-error" class="feedback" role="alert"></p>
+        </section>
+        <section id="network" aria-labelledby="network-title">
+          <header class="page-heading">
+            <div><h1 id="network-title">Oracle network</h1><p>Monitor the Master and manage oracle enrollment.</p></div>
+            <button id="open-invite" class="primary requires-access" type="button" disabled>＋ Create invitation</button>
+          </header>
+
+          <section class="services" aria-label="Service health">
+            <div><span>Master</span><strong id="master-status" class="service">Checking</strong></div>
+            <div><span>NEAR Sandbox</span><strong id="sandbox-status" class="service">Checking</strong></div>
+            <div><span>Demo target</span><strong id="target-status" class="service">Checking</strong></div>
+            <div><span>Control endpoint</span><strong id="control-status" class="service">Checking</strong></div>
+          </section>
+
+          <div id="management" hidden>
+            <dl class="stats">
+              <div><dt>Registered nodes</dt><dd id="registered">–</dd></div>
+              <div><dt>Online</dt><dd id="online">–</dd></div>
+              <div><dt>Pending approval</dt><dd id="pending">–</dd></div>
+            </dl>
+
+            <section class="panel registry" aria-labelledby="registry-title">
+              <header class="panel-header">
+                <div><h2 id="registry-title">Oracle nodes</h2><p id="last-refresh">Waiting for registry data</p></div>
+                <div class="actions">
+                  <label class="visually-hidden" for="filter">Filter oracle nodes</label>
+                  <select id="filter"><option value="all">All nodes</option><option value="pending">Pending approval</option></select>
+                  <button id="refresh" type="button" title="Refresh node list">Refresh</button>
+                </div>
+              </header>
+              <p id="registry-error" class="feedback" role="alert"></p>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th scope="col">Oracle account</th><th scope="col">Registry status</th><th scope="col">Heartbeat</th><th scope="col">Last seen</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                  <tbody id="nodes"></tbody>
+                </table>
+              </div>
+              <div class="panel-footer" id="pagination" hidden>
+                <button id="previous" type="button">Previous</button>
+                <span id="page-number"></span>
+                <button id="next" type="button">Next</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="agreements" aria-labelledby="agreements-title" hidden>
+          <header class="page-heading">
+            <div><h1 id="agreements-title">Agreements</h1><p>Inspect finalized escrow terms, reports and settlement.</p></div>
+          </header>
+          <section class="panel wallet-panel" aria-labelledby="wallet-title">
+            <div>
+              <h2 id="wallet-title">Sandbox wallet</h2>
+              <p id="wallet-summary">Waiting for the local Sandbox.</p>
+              <code id="wallet-account" hidden></code>
+            </div>
+            <div class="actions">
+              <button id="connect-wallet" type="button" disabled>Connect Sandbox wallet</button>
+              <button id="refresh-wallet" type="button" hidden>Check balance</button>
+            </div>
+            <div id="wallet-funding" hidden>
+              <p>Run this command from the checkout to fund this wallet with 2 Sandbox NEAR.</p>
+              <code id="wallet-command"></code>
+              <button id="copy-wallet-command" type="button">Copy funding command</button>
+            </div>
+            <p id="wallet-error" class="feedback" role="alert"></p>
+            <div id="transaction-panel" hidden>
+              <p id="transaction-status" role="status"></p>
+              <code id="transaction-hash"></code>
+              <dl id="transaction-receipts" class="details-grid" hidden></dl>
+              <div class="actions">
+                <button id="check-transaction" type="button">Check transaction</button>
+                <button id="resend-transaction" type="button">Resend same transaction</button>
+                <button id="discard-transaction" type="button" hidden>Clear expired transaction</button>
+              </div>
+            </div>
+          </section>
+          <section id="offer-panel" class="panel agreement-panel" aria-labelledby="offer-title" hidden>
+            <h2 id="offer-title">Create an offer</h2>
+            <p class="muted">Set the terms the customer will review before accepting.</p>
+            <form id="offer-form">
+              <div class="offer-fields">
+                <label class="full">Customer account <input id="offer-customer" maxlength="64" required spellcheck="false" autocomplete="off" placeholder="Customer’s funded Sandbox address"></label>
+                <label class="full">Target URL <input id="offer-endpoint" readonly></label>
+                <label>Compensation (NEAR) <input id="offer-payout" inputmode="decimal" value="0.1" required maxlength="40"></label>
+                <label>Start in (seconds) <input id="offer-start" type="number" min="30" max="604790" value="180" required></label>
+                <label>Slot interval (seconds) <input id="offer-interval" type="number" min="1" max="3600" value="3" required></label>
+                <label>Measurement slots <input id="offer-slots" type="number" min="2" max="64" value="5" required></label>
+                <label>Consecutive failures <input id="offer-threshold" type="number" min="2" max="5" value="3" required></label>
+                <label>Reporting grace (seconds) <input id="offer-grace" type="number" min="1" max="86400" value="120" required></label>
+                <label>Down quorum <input id="offer-quorum" type="number" min="2" max="3" value="2" required></label>
+              </div>
+              <fieldset>
+                <legend>Oracle roster</legend>
+                <div id="offer-oracles"></div>
+                <button id="more-offer-oracles" type="button" hidden>More eligible oracles</button>
+                <button id="refresh-offer-oracles" type="button">Refresh oracle roster</button>
+              </fieldset>
+              <p id="offer-error" class="feedback" role="alert"></p>
+              <button id="review-offer" class="primary" type="submit">Review funding</button>
+            </form>
+          </section>
+          <section class="panel agreement-panel" aria-label="Agreement lookup">
+            <form id="agreement-form" class="actions">
+              <label for="sla-id">SLA ID</label>
+              <input id="sla-id" type="text" inputmode="numeric" pattern="0|[1-9][0-9]{0,19}" maxlength="20" required>
+              <button class="primary" type="submit">Open agreement</button>
+            </form>
+            <p id="agreement-error" class="feedback" role="alert"></p>
+            <div id="agreement-details" hidden>
+              <header class="agreement-header"><h2 id="agreement-heading"></h2><span id="agreement-phase" class="badge"></span></header>
+              <p id="agreement-block"></p>
+              <dl id="agreement-terms" class="details-grid"></dl>
+              <div id="agreement-actions" class="actions"></div>
+              <p id="agreement-action-status" role="status"></p>
+              <details id="settlement-check" class="evidence-panel" hidden>
+                <summary>Verify settlement receipts</summary>
+                <form id="settlement-form" class="actions">
+                  <label for="settlement-hash">Claim transaction hash</label>
+                  <input id="settlement-hash" type="text" autocomplete="off" spellcheck="false"
+                    pattern="[1-9A-HJ-NP-Za-km-z]{43,44}" maxlength="44" required>
+                  <button type="submit">Verify claim</button>
+                </form>
+                <p id="settlement-check-status" class="feedback" role="status"></p>
+                <dl id="settlement-check-receipts" class="details-grid"></dl>
+              </details>
+              <h3>Finalized oracle reports</h3>
+              <p class="slot-legend">Up · Down · Unknown · No report</p>
+              <div class="table-wrap"><table class="history slot-table"><thead id="slots"></thead><tbody id="votes"></tbody></table></div>
+              <section class="evidence-panel" aria-labelledby="evidence-title">
+                <div class="evidence-header">
+                  <h3 id="evidence-title">Slot evidence</h3>
+                  <label for="evidence-oracle">Oracle</label>
+                  <select id="evidence-oracle"></select>
+                  <button id="evidence-download" type="button" hidden>Download JSON</button>
+                </div>
+                <p id="evidence-status" class="slot-legend" role="status"></p>
+                <div id="evidence-table" class="table-wrap" hidden>
+                  <table class="history evidence-table" aria-labelledby="evidence-title">
+                    <thead><tr><th scope="col">Slot starts</th><th scope="col">Target response</th><th scope="col">Finalized vote</th><th scope="col">Control reachability</th><th scope="col">Diagnostic</th></tr></thead>
+                    <tbody id="evidence-rows"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </section>
+        </section>
+
+        <section id="invitations" aria-labelledby="invitations-title" hidden>
+          <header class="page-heading">
+            <div><h1 id="invitations-title">Invitations</h1><p>Create and revoke single-use invitations for new oracle nodes.</p></div>
+            <button id="new-invite" class="primary requires-access" type="button" disabled>＋ Create invitation</button>
+          </header>
+          <section class="panel registry" aria-label="Invitation history">
+            <header class="panel-header"><div><h2>Invitation history</h2></div><button id="refresh-invitations" type="button">Refresh</button></header>
+            <p id="invitations-error" class="feedback" role="alert"></p>
+            <div class="table-wrap">
+              <table><thead><tr><th scope="col">Invitation ID</th><th scope="col">Status</th><th scope="col">Expires</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="invite-list"></tbody></table>
+            </div>
+            <div class="panel-footer" id="invite-pagination" hidden>
+              <button id="invite-previous" type="button">Previous</button>
+              <span id="invite-page-number"></span>
+              <button id="invite-next" type="button">Next</button>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="sign-dialog" aria-labelledby="sign-title">
+    <div class="dialog-heading"><div><h2 id="sign-title">Review transaction</h2><p id="sign-description"></p></div><button id="cancel-sign" type="button" data-close>Cancel</button></div>
+    <dl id="sign-terms" class="details-grid"></dl>
+    <p id="sign-error" class="feedback" role="alert"></p>
+    <button id="confirm-sign" class="primary" type="button">Sign transaction</button>
+  </dialog>
+
+  <dialog id="node-dialog" aria-labelledby="node-title">
+    <div class="dialog-heading"><div><h2 id="node-title">Oracle details</h2><p id="node-id"></p></div><button type="button" data-close>Close</button></div>
+    <p id="node-error" class="feedback" role="alert"></p>
+    <dl class="details-grid" id="node-metrics"></dl>
+    <section aria-labelledby="history-title">
+      <h3 id="history-title">Heartbeat history</h3>
+      <div class="table-wrap"><table class="history"><thead><tr><th scope="col">Received</th><th scope="col">Control</th><th scope="col">RPC</th><th scope="col">Diagnostic</th></tr></thead><tbody id="heartbeats"></tbody></table></div>
+      <button id="older-heartbeats" type="button" hidden>Older heartbeats</button>
+    </section>
+    <section aria-labelledby="assignments-title">
+      <h3 id="assignments-title">Assigned agreements</h3>
+      <div class="table-wrap"><table class="history"><thead><tr><th scope="col">Contract / SLA</th><th scope="col">Quorum</th><th scope="col">Window ends</th></tr></thead><tbody id="assignments"></tbody></table></div>
+      <button id="more-assignments" type="button" hidden>More assignments</button>
+    </section>
+    <div class="dialog-actions" id="node-actions"></div>
+  </dialog>
+
+  <dialog id="invite-dialog" aria-labelledby="invite-title">
+    <div class="dialog-heading"><div><h2 id="invite-title">Create invitation</h2><p>Share the single-use code privately with the node operator.</p></div><button type="button" data-close>Close</button></div>
+    <form id="invite-form">
+      <label for="ttl">Expires after</label>
+      <select id="ttl"><option value="900">15 minutes</option><option value="3600" selected>1 hour</option><option value="86400">24 hours</option></select>
+      <button class="primary" type="submit">Generate code</button>
+    </form>
+    <div id="invitation-result" hidden>
+      <label for="invitation-code">Invitation code</label>
+      <div class="actions"><input id="invitation-code" readonly><button id="copy" type="button">Copy</button></div>
+      <p id="invite-expiry"></p>
+    </div>
+    <p id="invite-error" class="feedback" role="alert"></p>
+  </dialog>
+
+  <div id="notification" class="toast" role="status" hidden></div>
+</body>
+</html>

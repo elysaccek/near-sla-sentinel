@@ -87,6 +87,13 @@ test("binds one native transfer and its callback to the recorded agreement attem
   });
 });
 
+test("requires explicit opt-in to verify a V2 settlement", () => {
+  const v2 = { ...state, policy_version: 2 };
+  assert.throws(() => verifySettlement(request, v2, trace()), /version-1/);
+  assert.throws(() => verifySettlement({ ...request, policyVersion: 2 }, state, trace()), /version-2/);
+  assert.equal(verifySettlement({ ...request, policyVersion: 2 }, v2, trace()).transfer_receipt_id, "transfer");
+});
+
 test("verifies an inconclusive refund to the provider and rejects it as customer compensation", () => {
   const provider = "provider.example.testnet";
   const refundState = { ...state, outcome: "inconclusive", provider };

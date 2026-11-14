@@ -1,0 +1,9 @@
+services:
+  web:
+    volumes:
+      - testnet-activity:/live-public:ro
+
+volumes:
+  testnet-activity:
+    external: true
+    name: ${SLA_TESTNET_ACTIVITY_VOLUME:-sla-sentinel-testnet_live-public}

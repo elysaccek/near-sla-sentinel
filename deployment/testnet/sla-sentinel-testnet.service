@@ -1,0 +1,22 @@
+[Unit]
+Description=SLA Sentinel single-host Testnet demo
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/sla-sentinel
+Environment=SLA_PRODUCT_PORT=8790
+EnvironmentFile=-/etc/sla-sentinel/testnet.conf
+ExecStart=/usr/bin/docker compose -f deployment/testnet/compose.yml up --detach --wait --wait-timeout 180
+ExecStop=/usr/bin/docker compose -f deployment/testnet/compose.yml stop
+TimeoutStartSec=240
+TimeoutStopSec=75
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

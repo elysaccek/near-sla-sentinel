@@ -1,4 +1,5 @@
 export const EVIDENCE_DOMAIN = "sla-sentinel/evidence/v1";
+export const WORKER_EVIDENCE_DOMAIN = "sla-sentinel/evidence/v2";
 export const MAX_PROBE_MS = 2_500;
 
 export interface EvidenceConfig {
@@ -29,6 +30,30 @@ export interface EvidenceDocument extends EvidenceConfig {
   observations: EvidenceObservation[];
 }
 
+const controlStates = ["not configured", "checking", "reachable", "unavailable"] as const;
+const probeFailures = ["DNS_FAILURE", "TCP_FAILURE", "TLS_FAILURE", "TIMEOUT", "TRANSPORT_FAILURE"] as const;
+export type ControlState = typeof controlStates[number];
+export type ProbeFailure = typeof probeFailures[number];
+export type ProbeDiagnostic = ProbeFailure | `LOCAL_FAULT/${ProbeFailure}`
+  | "LOCAL_FAULT/CLOCK" | "LOCAL_FAULT/CONTROL" | "CONTROL_PENDING" | "CONTROLLED_FAULT";
+
+const diagnostics = new Set<string>([
+  ...probeFailures, ...probeFailures.map((failure) => "LOCAL_FAULT/" + failure),
+  "LOCAL_FAULT/CLOCK", "LOCAL_FAULT/CONTROL", "CONTROL_PENDING", "CONTROLLED_FAULT",
+]);
+
+export interface ProbeContext {
+  slot: number;
+  observed_http_status: number | null;
+  control_state: ControlState | null;
+  diagnostic: ProbeDiagnostic | null;
+}
+
+export interface WorkerEvidenceDocument extends EvidenceConfig {
+  domain: typeof WORKER_EVIDENCE_DOMAIN;
+  observations: (EvidenceObservation & ProbeContext)[];
+}
+
 export interface ContractVote {
   sla_id: string;
   up_mask: string;
@@ -37,7 +62,7 @@ export interface ContractVote {
 }
 
 export interface EvidenceBundle {
-  evidence: EvidenceDocument;
+  evidence: EvidenceDocument | WorkerEvidenceDocument;
   contract_vote: ContractVote;
 }
 
@@ -131,10 +156,10 @@ export async function sha256(text: string): Promise<number[]> {
   return Array.from(new Uint8Array(digest));
 }
 
-export async function createEvidenceBundle(
+function probeDocument(
   config: EvidenceConfig,
   probes: readonly ProbeObservation[],
-): Promise<EvidenceBundle> {
+): EvidenceDocument {
   validateEvidenceConfig(config);
   const bySlot = new Map<number, ProbeObservation>();
   for (const probe of probes) {
@@ -144,19 +169,7 @@ export async function createEvidenceBundle(
     bySlot.set(probe.slot, probe);
   }
 
-  let upMask = 0n;
-  let downMask = 0n;
-  const observations = Array.from({ length: config.slot_count }, (_, slot) => {
-    const observation = normalizeObservation(config, bySlot.get(slot) ?? missingObservation(slot));
-    if (observation.result === "up") {
-      upMask |= 1n << BigInt(slot);
-    }
-    if (observation.result === "down") {
-      downMask |= 1n << BigInt(slot);
-    }
-    return observation;
-  });
-  const evidence: EvidenceDocument = {
+  return {
     domain: EVIDENCE_DOMAIN,
     network: config.network,
     contract: config.contract,
@@ -166,17 +179,61 @@ export async function createEvidenceBundle(
     starts_at_ms: config.starts_at_ms,
     slot_ms: config.slot_ms,
     slot_count: config.slot_count,
-    observations,
+    observations: Array.from({ length: config.slot_count }, (_, slot) =>
+      normalizeObservation(config, bySlot.get(slot) ?? missingObservation(slot))),
   };
+}
+
+async function bindVote<T extends EvidenceBundle["evidence"]>(evidence: T) {
+  let upMask = 0n;
+  let downMask = 0n;
+  for (const { slot, result } of evidence.observations) {
+    if (result === "up") upMask |= 1n << BigInt(slot);
+    if (result === "down") downMask |= 1n << BigInt(slot);
+  }
   return {
     evidence,
     contract_vote: {
-      sla_id: config.sla_id,
+      sla_id: evidence.sla_id,
       up_mask: upMask.toString(),
       down_mask: downMask.toString(),
       evidence_hash: await sha256(canonicalJson(evidence)),
     },
   };
+}
+
+export async function createEvidenceBundle(config: EvidenceConfig, probes: readonly ProbeObservation[]) {
+  return bindVote(probeDocument(config, probes));
+}
+
+export async function createWorkerEvidenceBundle(
+  config: EvidenceConfig, probes: readonly ProbeObservation[], context: readonly ProbeContext[],
+) {
+  const document = probeDocument(config, probes);
+  const bySlot = new Map<number, ProbeContext>();
+  for (const entry of context) {
+    if (!Number.isInteger(entry.slot) || entry.slot < 0 || entry.slot >= config.slot_count || bySlot.has(entry.slot)) {
+      throw new Error("Unexpected or duplicate diagnostic slot");
+    }
+    bySlot.set(entry.slot, entry);
+  }
+  const observations = document.observations.map((observation) => {
+    const { observed_http_status, control_state, diagnostic } = bySlot.get(observation.slot) ?? {
+      observed_http_status: observation.http_status, control_state: null, diagnostic: null,
+    };
+    const suppressedFailure = observation.http_status === null && observation.started_at_ms !== null && observed_http_status !== null
+      && Number.isInteger(observed_http_status) && observed_http_status >= 500 && observed_http_status <= 599
+      && ((control_state === "unavailable" && diagnostic === "LOCAL_FAULT/CONTROL")
+        || (control_state === "checking" && diagnostic === "CONTROL_PENDING"));
+    if ((control_state !== null && !controlStates.includes(control_state))
+        || (diagnostic !== null && !diagnostics.has(diagnostic))
+        || (observed_http_status !== observation.http_status && !suppressedFailure)
+        || (observation.result === "down" && (control_state === "checking" || control_state === "unavailable"))) {
+      throw new Error("Invalid diagnostic observation");
+    }
+    return { ...observation, observed_http_status, control_state, diagnostic };
+  });
+  return bindVote<WorkerEvidenceDocument>({ ...document, domain: WORKER_EVIDENCE_DOMAIN, observations });
 }
 
 export async function verifyEvidenceBundle(
@@ -185,7 +242,9 @@ export async function verifyEvidenceBundle(
 ): Promise<boolean> {
   try {
     const { evidence, contract_vote } = input;
-    const rebuilt = await createEvidenceBundle(evidence, evidence.observations);
+    const rebuilt = evidence.domain === WORKER_EVIDENCE_DOMAIN
+      ? await createWorkerEvidenceBundle(evidence, evidence.observations, evidence.observations)
+      : await createEvidenceBundle(evidence, evidence.observations);
     if (canonicalJson(input) !== canonicalJson(rebuilt)) {
       return false;
     }
@@ -200,27 +259,63 @@ export async function verifyEvidenceBundle(
   }
 }
 
-function longestRun(mask: bigint): number {
-  let length = 0;
-  while (mask !== 0n) {
-    mask &= mask << 1n;
-    length += 1;
+function longestSupportedRun(
+  masks: readonly bigint[],
+  slotCount: number,
+  quorum: number,
+): number {
+  let lower = 0;
+  let upper = slotCount;
+  while (lower < upper) {
+    const length = Math.ceil((lower + upper) / 2);
+    let range = (1n << BigInt(length)) - 1n;
+    let found = false;
+    for (let start = 0; start <= slotCount - length; start += 1, range <<= 1n) {
+      let count = 0;
+      for (const mask of masks) {
+        if ((mask & range) === range && ++count === quorum) break;
+      }
+      if (count === quorum) {
+        found = true;
+        break;
+      }
+    }
+    if (found) lower = length;
+    else upper = length - 1;
   }
-  return length;
+  return lower;
 }
+
+type WindowVote = Pick<ContractVote, "up_mask" | "down_mask"> | null;
 
 export function assessWindow(
   slotCount: number,
   minDownSlots: number,
-  votes: readonly (Pick<ContractVote, "up_mask" | "down_mask"> | null)[],
-): { outcome: "breach" | "healthy" | "inconclusive"; confirmed: number; possible: number } {
-  if (!Number.isInteger(slotCount) || slotCount < 2 || slotCount > 64
-      || !Number.isInteger(minDownSlots) || minDownSlots < 2 || minDownSlots > slotCount
-      || votes.length !== 3) {
+  votes: readonly WindowVote[],
+) {
+  if (votes.length !== 3) {
     throw new Error("Invalid observation window");
   }
+  return assessQuorumWindow(slotCount, minDownSlots, 2, votes);
+}
+
+/** The caller supplies one entry per authenticated member of the frozen roster. */
+export function assessQuorumWindow(
+  slotCount: number,
+  minDownSlots: number,
+  downQuorum: number,
+  votes: readonly WindowVote[],
+): { outcome: "breach" | "healthy" | "inconclusive"; confirmed: number; possible: number } {
+  if (!Number.isInteger(slotCount) || slotCount < 2 || slotCount > 64
+      || !Number.isInteger(minDownSlots) || minDownSlots < 2 || minDownSlots > slotCount) {
+    throw new Error("Invalid observation window");
+  }
+  if (votes.length < 3 || !Number.isInteger(downQuorum)
+      || downQuorum <= Math.floor(votes.length / 2) || downQuorum > votes.length) {
+    throw new Error("Invalid oracle quorum");
+  }
   const valid = (1n << BigInt(slotCount)) - 1n;
-  const masks = votes.map((vote) => {
+  const masks = Array.from(votes, (vote) => {
     if (vote === null) {
       return { up: 0n, down: 0n };
     }
@@ -235,12 +330,8 @@ export function assessWindow(
     return { up, down };
   });
 
-  let confirmed = 0;
-  let possible = 0;
-  for (const [a, b] of [[0, 1], [0, 2], [1, 2]]) {
-    confirmed = Math.max(confirmed, longestRun(masks[a].down & masks[b].down));
-    possible = Math.max(possible, longestRun(valid & ~(masks[a].up | masks[b].up)));
-  }
+  const confirmed = longestSupportedRun(masks.map((vote) => vote.down), slotCount, downQuorum);
+  const possible = longestSupportedRun(masks.map((vote) => valid & ~vote.up), slotCount, downQuorum);
   const outcome = confirmed >= minDownSlots ? "breach"
     : possible < minDownSlots ? "healthy" : "inconclusive";
   return { outcome, confirmed, possible };

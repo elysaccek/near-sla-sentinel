@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SLA Sentinel turns API uptime commitments into pre-funded agreements with verifiable settlement on NEAR.">
+  <title>How it works — SLA Sentinel</title>
+  <link rel="stylesheet" href="/product.css">
+  <script type="module" src="/how-it-works.js"></script>
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner"><a class="brand" href="/" aria-label="SLA Sentinel home"><i class="brand-mark" aria-hidden="true"></i>SLA<span>Sentinel</span></a><nav aria-label="Main navigation"><a href="/how-it-works" aria-current="page">How it works</a><a href="/testnet"><i class="nav-dot" aria-hidden="true"></i>Testnet</a></nav></div></header>
+<main class="wrap page">
+  <div class="page-heading"><p class="kicker"><i></i> Interactive walkthrough</p><h1>From terms to <em>settlement.</em></h1><p class="intro">See how three oracle accounts monitor an API and how a 2-of-3 quorum unlocks compensation.</p></div>
+  <section class="walkthrough" aria-label="Animated agreement">
+    <div class="walk-head">
+      <div><span class="mono small" id="step-index"></span><h2 id="step-title">Fund the agreement</h2></div>
+      <div class="walk-controls" aria-label="Playback">
+        <button class="btn secondary compact" id="step-prev" type="button" aria-label="Previous step">←</button>
+        <button class="btn primary compact" id="step-play" type="button">Pause</button>
+        <button class="btn secondary compact" id="step-next" type="button" aria-label="Next step">→</button>
+        <button class="btn secondary compact" id="step-reset" type="button">Restart</button>
+      </div>
+    </div>
+    <p class="step-caption" id="step-caption" aria-live="polite">The provider locks the compensation. The customer accepts the exact monitoring terms.</p>
+    <div class="walk-body" id="walk-body">
+      <section class="node-box terms" data-node="terms"><span class="node-label">Agreement terms</span><h3>NEAR escrow</h3><dl><div><dt>Compensation</dt><dd>0.01 NEAR</dd></div><div><dt>Down quorum</dt><dd>2 of 3</dd></div><div><dt>Required streak</dt><dd>3 slots</dd></div></dl><span class="state" id="terms-state">Funded · accepted</span></section>
+      <div class="network-map">
+        <div class="node-box master-node" data-node="master"><span class="node-label">Coordinator</span><h3>Master</h3><span class="node-sub">Signed assignments</span></div>
+        <div class="map-lines" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="oracle-grid">
+          <div class="node-box oracle" data-node="oracle-a"><h3>Oracle A</h3><span class="state" id="oracle-a">Ready</span></div>
+          <div class="node-box oracle" data-node="oracle-b"><h3>Oracle B</h3><span class="state" id="oracle-b">Ready</span></div>
+          <div class="node-box oracle" data-node="oracle-c"><h3>Oracle C</h3><span class="state" id="oracle-c">Ready</span></div>
+        </div>
+        <div class="map-lines probes" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="node-box target-node" data-node="target"><span class="node-label">Agreed endpoint</span><h3 class="mono">GET /health</h3><span class="node-sub">Timed HTTP observations</span></div>
+      </div>
+      <section class="node-box payout" data-node="payout"><span class="node-label">Beneficiary</span><h3>Customer</h3><div class="payout-amount" id="payout-amount">0.01 <span>NEAR</span></div><span class="state" id="payout-state">Held in escrow</span><p id="payout-details">Awaiting a corroborated outage.</p></section>
+    </div>
+    <div class="payment-area"><div class="payment-flow" id="payment-flow" hidden><span>NEAR escrow</span><div class="payment-rail" aria-hidden="true"><i></i></div><span>Customer · +0.01 NEAR</span></div></div>
+    <div class="walk-evidence">
+      <div class="table-wrap"><table class="slot-table"><caption>Observation window</caption><thead><tr><th scope="col">Oracle</th><th scope="col">Slot 1</th><th scope="col">Slot 2</th><th scope="col">Slot 3</th><th scope="col">Slot 4</th><th scope="col">Slot 5</th></tr></thead><tbody id="walk-votes"></tbody></table></div>
+      <table class="mobile-slot-table"><caption>Observation window</caption><thead><tr><th scope="col">Slot</th><th scope="col">Oracle A</th><th scope="col">Oracle B</th><th scope="col">Oracle C</th></tr></thead><tbody id="walk-votes-mobile"></tbody></table>
+      <div class="streak"><span class="node-label">Same-pair down streak</span><strong id="streak">0 / 3</strong><span id="streak-note">Waiting for checks</span></div>
+    </div>
+    <ol class="steps" id="walk-steps" aria-label="Walkthrough steps"></ol>
+  </section>
+  <div class="next-row"><p>Playback illustrates the agreement. Testnet activity contains on-chain transactions.</p><a href="/testnet">View Testnet activity <span aria-hidden="true">→</span></a></div>
+</main>
+<footer class="site-footer wrap"><a class="brand" href="/"><i class="brand-mark" aria-hidden="true"></i>SLA Sentinel</a><a href="https://github.com/elysaccek/near-sla-sentinel">Source on GitHub <span aria-hidden="true">↗</span></a></footer>
+</body>
+</html>

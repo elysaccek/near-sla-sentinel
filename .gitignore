@@ -2,6 +2,7 @@ target/
 node_modules/
 .DS_Store
 /packages/operator/testnet-payment-proof.json
+/packages/web/public/wallet-bundle.js
 .env
 .env.*
 *.key

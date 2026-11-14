@@ -1,0 +1,3 @@
+# Add this rule to the existing ingress list, above any wildcard or catch-all.
+- hostname: slasentinel.com
+  service: http://127.0.0.1:8790

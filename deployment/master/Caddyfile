@@ -1,0 +1,24 @@
+{
+	admin off
+	skip_install_trust
+}
+
+http://{$SLA_MASTER_DOMAIN} {
+	redir https://{$SLA_MASTER_DOMAIN}:{$SLA_HTTPS_PORT:443}{uri} 308
+}
+
+{$SLA_MASTER_DOMAIN} {
+	@worker {
+		method POST
+		path /oracles/registration/challenge /oracles/registration/verify /oracles/registration/status /oracles/assignments /oracles/heartbeat
+	}
+	handle @worker {
+		reverse_proxy master:8789
+	}
+	handle /healthz {
+		reverse_proxy master:8789
+	}
+	handle {
+		respond 404
+	}
+}

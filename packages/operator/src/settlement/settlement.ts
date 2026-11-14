@@ -56,6 +56,7 @@ interface SettlementRequest {
   slaId: string;
   transactionHash: string;
   kind?: "compensation" | "refund";
+  policyVersion?: 1 | 2;
 }
 
 function expect(condition: unknown, message: string): asserts condition {
@@ -89,15 +90,16 @@ function matchesEvent(logs: string[], name: string, expected: Record<string, unk
 }
 
 export function verifySettlement(
-  { contract, slaId, transactionHash, kind = "compensation" }: SettlementRequest,
+  { contract, slaId, transactionHash, kind = "compensation", policyVersion = 1 }: SettlementRequest,
   state: SettlementState,
   trace: TransactionTrace,
 ) {
   const expectedOutcome = kind === "refund"
     ? ["healthy", "inconclusive", "unaccepted"].includes(state.outcome)
     : state.outcome === "breach";
-  expect(state.policy_version === 1 && expectedOutcome && state.payment === "paid",
-    "Agreement is not a paid version-1 settlement of the requested kind");
+  expect((policyVersion === 1 || policyVersion === 2) && state.policy_version === policyVersion
+    && expectedOutcome && state.payment === "paid",
+  `Agreement is not a paid version-${policyVersion} settlement of the requested kind`);
   const beneficiary = kind === "refund" ? state.provider : state.customer;
   expect(beneficiary, "Missing settlement beneficiary");
   expect(Number.isInteger(state.attempt) && state.attempt > 0 && state.attempt <= 0xffff_ffff

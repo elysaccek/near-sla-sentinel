@@ -1,0 +1,131 @@
+x-master-image: &master-image
+  image: sla-sentinel-master:local
+  build:
+    context: ../..
+    dockerfile: deployment/Dockerfile
+    target: master
+  user: "${SLA_UID:-1000}:${SLA_GID:-1000}"
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  database:
+    image: postgres:18.7@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_PASSWORD_FILE: /run/sla-sentinel/postgres-password
+    volumes:
+      - database:/var/lib/postgresql
+      - &postgres-password
+        type: bind
+        source: ${SLA_MASTER_CREDENTIALS:?Set the absolute Master credentials directory}/postgres-password
+        target: /run/sla-sentinel/postgres-password
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [database]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, sentinel]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  database-init:
+    <<: *master-image
+    command: [node, provision-db.mjs]
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - *postgres-password
+      - &database-password
+        type: bind
+        source: ${SLA_MASTER_CREDENTIALS:?Set the absolute Master credentials directory}/database-password
+        target: /run/sla-sentinel/database-password
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [database]
+
+  master:
+    <<: *master-image
+    restart: unless-stopped
+    depends_on:
+      database-init:
+        condition: service_completed_successfully
+    environment:
+      SLA_MASTER_HOST: 0.0.0.0
+      SLA_MASTER_AUDIENCE: https://${SLA_MASTER_DOMAIN:?Set the Master DNS name}
+      SLA_MASTER_DATABASE_URL: postgresql://sentinel@database:5432/sentinel?options=--search_path%3Dsentinel
+      SLA_MASTER_DATABASE_PASSWORD_FILE: /run/sla-sentinel/database-password
+      SLA_MASTER_ADMIN_FILE: /run/sla-sentinel/admins.json
+      SLA_MASTER_ADMIN_TOKEN_FILE: /run/sla-sentinel/operator-token
+      SLA_MASTER_ASSIGNMENT_KEY_FILE: /run/sla-sentinel/assignment-private.der
+      SLA_MASTER_TESTNET_RPC_URL: ${SLA_MASTER_TESTNET_RPC_URL:-https://test.rpc.fastnear.com}
+    volumes:
+      - *database-password
+      - type: bind
+        source: ${SLA_MASTER_CREDENTIALS:?Set the absolute Master credentials directory}/admins.json
+        target: /run/sla-sentinel/admins.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SLA_MASTER_CREDENTIALS:?Set the absolute Master credentials directory}/operator-token
+        target: /run/sla-sentinel/operator-token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SLA_MASTER_CREDENTIALS:?Set the absolute Master credentials directory}/assignment-private.der
+        target: /run/sla-sentinel/assignment-private.der
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [edge, database]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8789/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    stop_grace_period: 15s
+
+  caddy:
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      master:
+        condition: service_healthy
+    environment:
+      SLA_MASTER_DOMAIN: ${SLA_MASTER_DOMAIN:?Set the Master DNS name}
+      SLA_HTTPS_PORT: ${SLA_HTTPS_PORT:-443}
+    ports:
+      - "${SLA_BIND_IP:-0.0.0.0}:${SLA_HTTP_PORT:-80}:80"
+      - "${SLA_BIND_IP:-0.0.0.0}:${SLA_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://master:8789/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+networks:
+  edge:
+  database:
+    internal: true
+
+volumes:
+  database:
+  caddy-data:
+  caddy-config:

@@ -1,6 +1,6 @@
 # SLA Sentinel
 
-SLA Sentinel lets API providers pre-fund outage compensation on NEAR. The provider deposits a fixed amount for an observation window, and the customer accepts the terms before monitoring starts. The same two authorized oracle accounts must corroborate a consecutive run of failed samples before the customer can claim. A working deployment is available on NEAR Testnet.
+SLA Sentinel lets API providers pre-fund outage compensation on NEAR. The provider deposits a fixed amount for an observation window, and the customer accepts the terms before monitoring starts. The same quorum of authorized oracles must corroborate the entire consecutive run of failed samples before the customer can claim. Verified deployments are available on NEAR Testnet.
 
 ## Explore the demo evidence
 
@@ -16,13 +16,51 @@ later by running `node docs/evidence-viewer/generate.mjs` from the repository ro
 
 ## How it works
 
-![A provider funds the escrow, the customer accepts, three oracle accounts submit signed observations, and the same-pair rule determines the claim](docs/assets/sla-sentinel-flow.jpg)
+![The original V1 flow uses three oracle accounts and a same-pair rule to settle an accepted agreement](docs/assets/sla-sentinel-flow.jpg)
 
 Each oracle probes the endpoint and submits its own signed vote and evidence hash.
 
 See the [architecture](docs/architecture.md) for agreement terms, evidence, and payment safety.
 
-## Verified Testnet demonstration
+The [V2 escrow](docs/escrow-v2.md) supports per-agreement rosters and quorum.
+The [V2 Testnet pilot](docs/escrow-v2.md#recheck-the-recorded-testnet-pilot)
+verified two compensations and one refund with 3-, 5-, and 7-oracle policies.
+The [Master registry](docs/master.md) manages oracle enrollment, operator approval,
+and signed health reports separately from on-chain agreement membership.
+[V2 oracle workers](docs/worker.md) verify and cache signed assignments, then
+continue monitoring and reporting when the Master is unavailable. Workers
+can check independent control endpoints and exercise local fault recovery in Sandbox.
+
+## Run the local operations console
+
+With Docker Compose available, start the Master, three oracle workers,
+PostgreSQL, NEAR Sandbox and the V2 escrow on one host. From the repository
+root, the interactive installer asks for the Compose project and web port:
+
+```sh
+node deployment/local/install.mjs
+```
+
+The default address is [http://127.0.0.1:8780](http://127.0.0.1:8780).
+Open **How it works** for the animated funding, quorum and payment walkthrough.
+The [local console guide](docs/local-console.md) explains how to opt in to
+Sandbox management and also covers direct Compose
+commands, remote access via SSH, agreement signing and slot evidence. The
+[two outage scenarios](docs/local-console.md#compare-a-target-outage-with-lost-control-reachability)
+show how the same HTTP 503 yields different settlements depending on control
+reachability.
+
+## Product site and live Testnet
+
+The [live Testnet guide](docs/live-testnet.md) starts a separate read-only
+website and an optional one-host runner for scheduled 2-hour, 3-hour and
+5-hour HTTP scenarios. Agreements settle on NEAR Testnet and the history
+links each verified transfer to its transaction.
+
+For one Ubuntu host with no public origin port, see the
+[Cloudflare Tunnel deployment guide](docs/single-server-testnet.md).
+
+## Original Testnet demonstration
 
 On November 11, 2026, three oracle accounts submitted signed observations of a
 controlled HTTP outage. Agreement `0` recorded five consecutive failed slots
@@ -72,7 +110,12 @@ and the [reproduction command](docs/operations.md#check-payment-in-a-local-sandb
 | --- | --- |
 | `contracts/sla-escrow/` | Rust agreement, escrow and payment logic, with contract tests. |
 | `packages/operator/src/` | CLI commands, monitoring, oracle signing, settlement verification and demo support. |
+| `packages/operator/src/worker/` | V2 worker identity, local persistence, probe scheduler, and NEAR reporting. |
 | `packages/operator/test/` | TypeScript tests for measurements, signing and receipt verification. |
+| `packages/master/` | Oracle registry API, admin CLI, PostgreSQL migrations and integration tests. |
+| `packages/web/` | Local operations console and finalized agreement viewer. |
+| `packages/shared/` | Shared assignment, request signing, and finalized NEAR RPC formats. |
+| `deployment/` | Linux Compose profiles for the Master and each Oracle. See the [deployment runbook](docs/deployment.md). |
 | `examples/testnet/` | Evidence and receipts from the recorded Testnet payment. |
 | `examples/sandbox/` | Scripted observations and receipts from the inconclusive case. |
 | `docs/` | Architecture, operator instructions and the evidence format. |

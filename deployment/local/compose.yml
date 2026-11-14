@@ -1,0 +1,318 @@
+name: sla-sentinel-local
+
+x-hardened: &hardened
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-local: &local
+  <<: *hardened
+  image: sla-sentinel-sandbox:local
+  build:
+    context: ../..
+    dockerfile: deployment/Dockerfile
+    target: local
+
+x-master: &master
+  <<: *hardened
+  image: sla-sentinel-local-master:local
+  build:
+    context: ../..
+    dockerfile: deployment/Dockerfile
+    target: master
+
+x-oracle: &oracle
+  <<: *local
+  restart: unless-stopped
+  network_mode: service:sandbox
+  command: [/bin/sh, local/worker.sh]
+  environment:
+    SLA_WORKER_SANDBOX_NETWORK: test-chain-sla-sentinel
+    SLA_WORKER_SANDBOX_RPC_URL: http://127.0.0.1:34831
+    SLA_WORKER_VOTE_KEY_FILE: /state/vote-key
+  healthcheck:
+    test: [CMD, test, -s, /state/worker.sqlite]
+    interval: 3s
+    timeout: 2s
+    retries: 15
+
+services:
+  volumes-init:
+    <<: *local
+    user: root
+    network_mode: none
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    command: [/bin/sh, local/volumes.sh]
+    volumes:
+      - postgres-auth:/data/postgres-auth
+      - master-auth:/data/master-auth
+      - console-auth:/data/console-auth
+      - bootstrap-auth:/data/bootstrap-auth
+      - demo-state:/data/demo-state
+      - chain:/data/chain
+      - escrow:/data/escrow
+      - oracle-1:/data/oracle-1
+      - oracle-2:/data/oracle-2
+      - oracle-3:/data/oracle-3
+      - assignment-public:/data/assignment-public
+      - oracle-1-evidence:/data/oracle-1-evidence
+      - oracle-2-evidence:/data/oracle-2-evidence
+      - oracle-3-evidence:/data/oracle-3-evidence
+
+  database:
+    image: postgres:18.7@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
+    restart: unless-stopped
+    depends_on:
+      volumes-init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: sentinel
+      POSTGRES_PASSWORD_FILE: /run/postgres-auth/password
+    volumes:
+      - database:/var/lib/postgresql
+      - postgres-auth:/run/postgres-auth:ro
+    networks: [database]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, sentinel]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  database-init:
+    <<: *master
+    command: [node, provision-db.mjs]
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      SLA_POSTGRES_PASSWORD_FILE: /run/postgres-auth/password
+      SLA_MASTER_DATABASE_PASSWORD_FILE: /run/master-auth/database-password
+    user: "1000:999"
+    volumes:
+      - postgres-auth:/run/postgres-auth:ro
+      - master-auth:/run/master-auth:ro
+    networks: [database]
+
+  sandbox:
+    <<: *local
+    restart: unless-stopped
+    command: [/bin/sh, local/sandbox.sh]
+    depends_on:
+      volumes-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${SLA_LOCAL_PORT:-8780}:8780"
+    volumes:
+      - chain:/chain
+    networks: [database, console]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:34831/status').then(r => r.json()).then(v => process.exit(v.chain_id === 'test-chain-sla-sentinel' ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 20s
+
+  escrow-init:
+    <<: *local
+    network_mode: service:sandbox
+    command: [node, local/escrow.mjs]
+    depends_on:
+      sandbox:
+        condition: service_healthy
+    volumes:
+      - chain:/chain:ro
+      - escrow:/escrow
+      - oracle-1:/oracle-1
+      - oracle-2:/oracle-2
+      - oracle-3:/oracle-3
+
+  master:
+    <<: *master
+    restart: unless-stopped
+    network_mode: service:sandbox
+    depends_on:
+      database-init:
+        condition: service_completed_successfully
+      sandbox:
+        condition: service_healthy
+    environment:
+      SLA_MASTER_AUDIENCE: http://127.0.0.1:8789
+      SLA_MASTER_DATABASE_URL: postgresql://sentinel@database:5432/sentinel?options=--search_path%3Dsentinel
+      SLA_MASTER_DATABASE_PASSWORD_FILE: /run/master-auth/database-password
+      SLA_MASTER_ADMIN_FILE: /run/master-auth/admins.json
+      SLA_MASTER_ADMIN_TOKEN_FILE: /run/bootstrap-auth/token
+      SLA_MASTER_ASSIGNMENT_KEY_FILE: /run/master-auth/assignment-private.der
+      SLA_MASTER_SANDBOX_NETWORK: test-chain-sla-sentinel
+      SLA_MASTER_SANDBOX_RPC_URL: http://127.0.0.1:34831
+    volumes:
+      - master-auth:/run/master-auth:ro
+      - bootstrap-auth:/run/bootstrap-auth:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8789/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  enroll:
+    <<: *local
+    network_mode: service:sandbox
+    command: [node, local/enroll.mjs]
+    depends_on:
+      master:
+        condition: service_healthy
+      escrow-init:
+        condition: service_completed_successfully
+    volumes:
+      - bootstrap-auth:/run/bootstrap-auth:ro
+      - oracle-1:/oracle-1
+      - oracle-2:/oracle-2
+      - oracle-3:/oracle-3
+
+  oracle-1:
+    <<: *oracle
+    depends_on: &enrolled
+      enroll:
+        condition: service_completed_successfully
+    volumes:
+      - oracle-1:/state
+      - oracle-1-evidence:/evidence
+      - escrow:/escrow:ro
+      - assignment-public:/run/assignment:ro
+
+  oracle-2:
+    <<: *oracle
+    depends_on: *enrolled
+    volumes:
+      - oracle-2:/state
+      - oracle-2-evidence:/evidence
+      - escrow:/escrow:ro
+      - assignment-public:/run/assignment:ro
+
+  oracle-3:
+    <<: *oracle
+    depends_on: *enrolled
+    volumes:
+      - oracle-3:/state
+      - oracle-3-evidence:/evidence
+      - escrow:/escrow:ro
+      - assignment-public:/run/assignment:ro
+
+  target:
+    <<: *local
+    restart: unless-stopped
+    network_mode: service:sandbox
+    command: [node, local/target.mjs]
+    volumes:
+      - demo-state:/demo-state:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8787/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+
+  control:
+    <<: *local
+    restart: unless-stopped
+    network_mode: service:sandbox
+    command: [node, local/target.mjs, control]
+    volumes:
+      - demo-state:/demo-state:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8788/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+
+  web:
+    <<: *hardened
+    image: sla-sentinel-console:local
+    build:
+      context: ../..
+      dockerfile: deployment/Dockerfile
+      target: console
+    restart: unless-stopped
+    network_mode: service:sandbox
+    depends_on:
+      master:
+        condition: service_healthy
+      escrow-init:
+        condition: service_completed_successfully
+    environment:
+      SLA_CONSOLE_ORIGIN: http://127.0.0.1:${SLA_LOCAL_PORT:-8780}
+      SLA_LOCAL_ENABLE_CONSOLE: ${SLA_LOCAL_ENABLE_CONSOLE:-0}
+      SLA_CONSOLE_PROJECT: ${COMPOSE_PROJECT_NAME}
+      SLA_CONSOLE_TOKEN_FILE: /run/console-auth/console-token
+      SLA_CONSOLE_CHAIN_FILE: /escrow/deployment.json
+    volumes:
+      - console-auth:/run/console-auth:ro
+      - escrow:/escrow:ro
+      - demo-state:/demo-state:ro
+      - oracle-1-evidence:/evidence/oracle-1.test.near:ro
+      - oracle-2-evidence:/evidence/oracle-2.test.near:ro
+      - oracle-3-evidence:/evidence/oracle-3.test.near:ro
+    healthcheck:
+      test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:8780/healthz',{headers:{Host:new URL(process.env.SLA_CONSOLE_ORIGIN).host}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  wallet-fund:
+    <<: *local
+    profiles: [wallet]
+    network_mode: service:sandbox
+    command: [node, local/wallet-fund.mjs]
+    depends_on:
+      escrow-init:
+        condition: service_completed_successfully
+    volumes:
+      - chain:/chain:ro
+      - escrow:/escrow:ro
+
+  demo:
+    <<: *local
+    profiles: [demo]
+    network_mode: service:sandbox
+    command: [node, local/demo.mjs]
+    environment:
+      SLA_CONSOLE_ORIGIN: http://127.0.0.1:${SLA_LOCAL_PORT:-8780}
+    depends_on:
+      web:
+        condition: service_healthy
+      oracle-1:
+        condition: service_healthy
+      oracle-2:
+        condition: service_healthy
+      oracle-3:
+        condition: service_healthy
+      target:
+        condition: service_healthy
+      control:
+        condition: service_healthy
+    volumes:
+      - chain:/chain:ro
+      - escrow:/escrow:ro
+      - bootstrap-auth:/run/bootstrap-auth:ro
+      - demo-state:/demo-state
+
+networks:
+  database:
+    internal: true
+  console:
+
+volumes:
+  database:
+  postgres-auth:
+  master-auth:
+  console-auth:
+  bootstrap-auth:
+  demo-state:
+  chain:
+  escrow:
+  assignment-public:
+  oracle-1:
+  oracle-2:
+  oracle-3:
+  oracle-1-evidence:
+  oracle-2-evidence:
+  oracle-3-evidence:

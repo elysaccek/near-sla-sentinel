@@ -1,0 +1,24 @@
+{
+  "name": "@sla-sentinel/master",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "admin": "node src/admin.ts",
+    "test:sandbox": "node test/worker-sandbox.ts",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.15.6",
+    "near-api-js": "7.5.1"
+  }
+}

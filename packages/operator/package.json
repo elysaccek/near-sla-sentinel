@@ -7,13 +7,19 @@
   },
   "scripts": {
     "oracle": "node src/commands/oracle-cli.ts",
+    "worker": "node src/commands/worker-cli.ts",
     "test": "node --test test/*.test.ts",
+    "test:sandbox:v2": "node test/sandbox-v2.ts",
+    "test:pilot:v2": "node test/settlement-pilot.ts",
     "verify:payment": "node src/commands/verify-settlement.ts",
+    "verify:worker-proof": "node src/commands/verify-worker-proof.ts",
     "demo:testnet": "node src/commands/testnet-payment.ts",
+    "demo:testnet:v2": "node src/commands/testnet-v2.ts",
     "demo:sandbox": "node src/commands/sandbox-payment.ts",
     "demo:health": "node src/demo/demo-health.ts"
   },
   "dependencies": {
+    "ipaddr.js": "2.5.0",
     "near-api-js": "7.5.1"
   }
 }

@@ -104,7 +104,9 @@ This loopback demo can run several signing identities on one host. For
 independent hosted observations, configure each worker with the same approved
 public HTTPS URL and apply an egress rule for that target.
 
-## Verify a recorded Testnet compensation
+## Verify a recorded Testnet settlement
+
+### Verify a recorded Testnet compensation
 
 After the customer calls `claim`, run the read-only verifier with the customer
 account and claim transaction hash.
@@ -118,6 +120,73 @@ The output identifies the transfer and callback receipt IDs and the exact
 amount in yoctoNEAR. The verifier checks finality, the agreement state, the
 native transfer, and the callback's promise dependency on that transfer.
 Keep the JSON output with the demo. Show the rejected second claim separately.
+
+Use `--policy-version 2` for a V2 agreement. When the provider claims a V2
+refund, pass the provider account as the signer of that claim:
+
+```sh
+npm run verify:payment -- --contract "$SLA_CONTRACT" --provider "$SLA_PROVIDER" \
+  --sla-id "$SLA_ID" --tx "$SLA_CLAIM_TX" --policy-version 2 --kind refund
+```
+
+See the [V2 pilot runbook](escrow-v2.md#run-the-v2-settlement-pilot) to produce
+the three controlled settlement cases on a new V2 account.
+
+## Reconcile a V2 payment attempt
+
+Record the contract, agreement ID, beneficiary, attempt number and original
+`claim` transaction hash. An RPC timeout can occur before the caller learns the
+result. NEAR executes the claim, native transfer and callback in separate
+receipts. [NEAR cross-contract calls](https://docs.near.org/smart-contracts/anatomy/crosscontract)
+
+From `packages/operator` after `npm ci`, collect the finalized Testnet state and
+receipt trace. Set `SLA_BENEFICIARY` to the signer of the original claim. The
+command queries public data and requires no signing key.
+
+```sh
+node --input-type=module - \
+  "$SLA_CONTRACT" "$SLA_ID" "$SLA_BENEFICIARY" "$SLA_CLAIM_TX" <<'JS'
+import { JsonRpcProvider } from "near-api-js";
+const [contractId, slaId, signer, txHash] = process.argv.slice(2);
+const rpc = new JsonRpcProvider({ url: "https://archival-rpc.testnet.near.org" });
+if (await rpc.getNetworkId() !== "testnet") throw new Error("Expected Testnet RPC");
+const trace = await rpc.viewTransactionStatusWithReceipts({
+  accountId: signer, txHash, waitUntil: "FINAL",
+});
+const state = await rpc.callFunction({
+  contractId, method: "get_sla", args: { sla_id: slaId }, blockQuery: { finality: "final" },
+});
+const [action] = trace.transaction.actions;
+const call = action?.FunctionCall;
+const beneficiary = state?.outcome === "breach" ? state.customer : state?.provider;
+if (state?.policy_version !== 2 || trace.final_execution_status !== "FINAL"
+    || trace.transaction.hash !== txHash || trace.transaction.signer_id !== signer
+    || trace.transaction.receiver_id !== contractId || beneficiary !== signer
+    || trace.transaction.actions.length !== 1 || call?.method_name !== "claim" || call.deposit !== "0"
+    || JSON.parse(Buffer.from(call.args, "base64")).sla_id !== slaId) {
+  throw new Error("Expected the finalized claim for this V2 agreement and beneficiary");
+}
+console.log(JSON.stringify({ state, trace }, null, 2));
+JS
+```
+
+Match the `payment_pending` log to the agreement, amount, beneficiary and
+attempt. In the receipt list, follow the claim's outgoing native `Transfer`
+from the escrow to that beneficiary. Match its output data ID to the input of
+the escrow's `on_payment` callback. A gas refund is a separate receipt. Compare
+each receipt's outcome with the finalized agreement:
+
+| Final evidence | Operator action |
+| --- | --- |
+| The linked transfer succeeded, the callback emitted `payment_succeeded` for the attempt, and the agreement is `paid`. | Run [the receipt verifier](#verify-a-recorded-testnet-settlement) with the correct V2 settlement kind. Record the two receipt IDs and close the incident. |
+| The linked transfer failed, the callback emitted `payment_failed` for the attempt, and the same attempt is still `claimable`. | The beneficiary can call `claim` again. Verify the new attempt by its own hash. |
+| The agreement remains `pending`, or receipt outcomes or their linkage are unclear. | Hold the original attempt and save the trace. Retrieve any missing receipts from an archival RPC that tracks the signer shard. Escalate a failed callback with the original transaction and available receipt IDs. A successful native transfer already moved the funds even if the callback failed. |
+
+The V2 contract blocks a second claim while an attempt is `pending`. There is
+no administrative reset in this contract. Preserve the original attempt for
+review and keep any external reimbursement on hold while execution is unclear.
+See [NEAR transaction status with receipts](https://docs.near.org/api/rpc/transactions)
+for finality and receipt availability.
 
 ## Check payment in a local Sandbox
 
@@ -156,3 +225,17 @@ all four slots. The runner checks that the longest confirmed run is two, the
 decision is `inconclusive`, the customer's claim fails, and the provider gets
 the 0.1 NEAR principal back. The JSON includes the rejected customer transaction
 and the provider refund and callback receipts.
+
+## Deployment milestones
+
+The [Linux deployment profiles](deployment.md) cover manual configuration,
+HTTPS, enrollment, restart and recovery.
+
+Separate interactive setup commands are available for the Master and each
+Oracle on Linux. They validate inputs and reuse saved state on rerun.
+
+- Master setup asks for the DNS name, Testnet RPC and listener settings. It
+  initializes bundled PostgreSQL and generates private service credentials.
+- Oracle setup asks for the Master URL, private invitation file, trusted
+  assignment public key, NEAR account, scoped vote key file, escrow and probe
+  settings. It prints the registration status and starts the worker.
